@@ -8,38 +8,75 @@ detected by the sensor.
 Jim Craveiro <jim.craveiro@gmail.com>
 """
 
-from pygame import mixer
+import RPi.GPIO as GPIO
+import subprocess
+import datetime
+import pygame
 import time
 import sys
-import RPi.GPIO as GPIO
+
+# Global Constants
 
 HALL_SENSOR = 11
+
+# Other Globals
+
+music = pygame.mixer.music
 
 """
 Initializes the GPIO pin for the hall effect sensor
 as well as initializing mixer for the alarm, and loading
 the alarm audio file.
+
+If the audio file is not found, then it will use one specified as
+a command line argument.
 """
 def init():
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(HALL_SENSOR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     
-    mixer.init()
-    mixer.music.load('alarm.mp3')
+    pygame.mixer.init()
+
+    try:
+        music.load('alarm.mp3')
+        print('Loaded alarm.mp3')
+
+    except pygame.error:
+
+        try:
+            music.load(sys.argv[1])
+            print('Loaded ' + sys.argv[1])
+        
+        except IndexError:
+            print('ERROR: Alarm could not be found and no secondary alarm file was specified, exiting.')
+            sys.exit(1)
+    
+    print("STATUS: MONITORING")
 
 """
-Returns 1 if the hall effect sensor detects a magnetic field,
-and zero if it does not.
+Returns 0 if the hall effect sensor detects a magnetic field,
+and 1 if it does not.
 """
 def hallStatus():
     return GPIO.input(HALL_SENSOR)
+
 """
-Called by alarm to log the time the alarm was tripped in a log file in root's homedir.
+Function that returns a timestamp string in a human readable format.
+"""
+def timestamp():
+    return datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S UTC')
+
+"""
+Called by alarm to log the time the alarm was tripped in a log file in root's homedir,
+as well as broadcasting it on the pi's terminal.
 """
 def log():
-    timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
-    log = open('/root/alarm_log', 'r+')
-    log.write('ALARM TRIGGERED: ' + timestamp)
+    notify_string = 'ALARM TRIGGERED: ' + timestamp()
+    
+    subprocess.call(['wall', notify_string])
+    
+    log = open('/root/alarm_log', 'w+')
+    log.write(notify_string)
     log.close()
 
 """
@@ -47,7 +84,7 @@ Plays the alarm audio file over the raspberry pi's analog audio out.
 Calls log to log the time that the alarm was tripped.
 """
 def alarm():
-    mixer.music.play(loops = -1)
+    music.play(loops = -1)
     log()
 
 """
@@ -59,9 +96,14 @@ magnetic field present.
 """
 if __name__ == "__main__":
     init()
+    
+    # main loop, waits until hallStatus is high, then breaks
     while(True):
-        time.sleep(1)
-        if(hallStatus() == 0):
+        if(hallStatus()):
             break
+    
     alarm()
     
+    # would have been busy wait, but python wont let me do nothing in a while loop
+    while(True):
+        time.sleep(sys.maxsize)

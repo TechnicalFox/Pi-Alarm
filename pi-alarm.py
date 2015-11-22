@@ -75,8 +75,8 @@ def log():
     
     subprocess.call(['wall', notify_string])
     
-    log = open('/root/alarm_log', 'w+')
-    log.write(notify_string)
+    log = open('/root/alarm.log', 'a+')
+    log.write(notify_string + '\n')
     log.close()
 
 """
